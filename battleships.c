@@ -1,24 +1,8 @@
-//Stan Alexandra 312CD
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 // Structure to organize data for a single ship
-
-typedef struct {
-	int total_ships;
-	int total_shots;
-	int successful_hits;
-} matchstats;
-
-typedef struct {
-	int index;
-	double score;
-	int K;
-} matcheval;
-
 typedef struct {
 	int x_start;
 	int y_start;
@@ -35,15 +19,7 @@ typedef struct {
 	int total_ships;
 	int valid_ships_count;
 	int destroyed_ships_count;
-
-	int total_shots;
-	int successful_shots;
 } Player;
-
-int custom_round(double d)
-{
-	return (int)(d < 0.0 ? d - 0.5 : d + 0.5);
-}
 
 // Returns the length of the ship based on its type
 int get_length(char type)
@@ -324,7 +300,6 @@ void run_attack_phase(Player *p1, Player *p2, int n, int m)
 		p2->destroyed_ships_count < p2->valid_ships_count) {
 
 		int attacker = (player % 2) + 1;
-		Player *current_p = (player % 2 == 0) ? p1 : p2;
 		Player *opponent = (player % 2 == 0) ? p2 : p1;
 
 		int x_attack, y_attack;
@@ -345,18 +320,15 @@ void run_attack_phase(Player *p1, Player *p2, int n, int m)
 
 		if (cell == 'X' || cell == 'D' || cell == '!') {
 			// Case 1: Already attacked coordinates (Hit 'X', Destroyed-Hit 'D', OR Missed Water '!')
-			current_p->total_shots++;
 			printf("Coordonatele (%d, %d) au fost deja atacate de jucatorul %d.\n", x_attack, y_attack, attacker);
 			player++;
 		} else if (cell == 'F') {
 			// Case 2: Ship destroyed, but cell unhit ('F'). Treat as simple miss for message output.
-			current_p->total_shots++;
 			opponent->board[r][c] = 'D'; // Mark as hit/destroyed
 			printf("Jucatorul %d a ratat o lovitura la coordonatele (%d, %d).\n", attacker, x_attack, y_attack);
 			player++;
 		} else if (cell == '0') {
 			// Case 3: Miss (Clean Water)
-			current_p->total_shots++;
 			opponent->board[r][c] = '!';
 			printf("Jucatorul %d a ratat o lovitura la coordonatele (%d, %d).\n", attacker, x_attack, y_attack);
 			player++;
@@ -364,8 +336,6 @@ void run_attack_phase(Player *p1, Player *p2, int n, int m)
 			// Case 4: Successful hit on a valid ship
 
 			// Mark cell as hit and identify ship
-			current_p->total_shots++;
-			current_p->successful_shots++;
 			opponent->board[r][c] = 'X';
 			int ship_length = cell - '0';
 			int ship_idx = find_hit_ship(opponent, r, c, ship_length);
@@ -392,260 +362,19 @@ void run_attack_phase(Player *p1, Player *p2, int n, int m)
 	}
 }
 
-char *read_stats_input()
-{
-	int i = 0;
-	char c, *s = NULL, *tmp;
-	scanf(" %c", &c);
-	while(c != '\n') {
-		tmp = realloc(s, (i+2) *  sizeof(char));
-		if (!tmp)
-			return 0;
-		s = tmp;
-		s[i] = c;
-		i++;
-		scanf("%c", &c);
-	}
-	s[i] = '\0';
-	return s;
-}
-
-double match_acc(int successful_hits, int total_shots)
-{
-	if (total_shots == 0)
-		return 0.0;
-	return (double)successful_hits * 100.0 / total_shots;
-}
-
-double total_acc(matchstats *history, int num_match)
-{
-	double numerator = 0.0;
-	int denominator = 0;
-	for (int i = 0; i < num_match; i++) {
-		double acc = match_acc(history[i].successful_hits, history[i].total_shots);
-		numerator += acc * history[i].total_ships;
-		denominator += history[i].total_ships;
-	}
-	if (denominator == 0)
-		return 0.0;
-	return numerator / denominator;
-}
-
-int min_misses_hit(matchstats match, double X)
-{
-	if (match.total_shots == 0)
-		return 0;
-	if (match_acc(match.successful_hits, match.total_shots) >= X)
-		return 0;
-	int missed_shots = match.total_shots - match.successful_hits;
-	double required_successful_double = (X * match.total_shots) / 100.0;
-	int required_successful_ceil = (int)(required_successful_double + 0.9999999);
-
-	int min_not_miss = required_successful_ceil - match.successful_hits;
-
-	if (min_not_miss > missed_shots)
-		return missed_shots;
-	return (min_not_miss > 0) ? min_not_miss : 0;
-}
-
-int max_misses_to_hit(matchstats match, double X)
-{
-	if (match.successful_hits == 0)
-		return (X == 0.0) ? 9999 : 0;
-
-	double total_max_allowed_double = (match.successful_hits * 100.0) / X;
-	int total_max_allowed = (int)total_max_allowed_double;
-
-	int max_misses = total_max_allowed - match.total_shots;
-
-	return (max_misses > 0) ? max_misses : 0;
-}
-
-int compare_desc(const void *a, const void *b)
-{
-	double score_a = ((matcheval *)a)->score;
-	double score_b = ((matcheval *)b)->score;
-	if (score_a < score_b)
-		return 1;
-	if (score_a > score_b)
-		return -1;
-	return 0;
-}
-
-int min_matches_100(matchstats *history, int J, double X)
-{
-	double current_acc = total_acc(history, J);
-	if (current_acc >= X)
-		return 0;
-	int total_K = 0;
-	for (int i = 0; i < J; i++) {
-		if (total_K == 0)
-			return J + 1;
-	}
-
-	matchstats temp_history[J];
-	memcpy(temp_history, history, J * sizeof(matchstats));
-
-	matcheval *gains = (matcheval *)malloc(J * sizeof(matcheval));
-	if (!gains)
-		return -1;
-	for (int i = 0; i < J; i++) {
-		double acc_i = match_acc(temp_history[i].successful_hits, temp_history[i].total_shots);
-		gains[i].index = i;
-		gains[i].K = temp_history[i].total_ships;
-		gains[i].score = (100.0 - acc_i) * gains[i].K;
-	}
-	qsort(gains, J, sizeof(matcheval), compare_desc);
-
-	int min_matches = 0;
-	for (int i = 0; i < J; i++) {
-		if (gains[i].K == 0 || gains[i].score <= 0)
-			continue;
-		current_acc = total_acc(temp_history, J);
-		if (current_acc >= X)
-			break;
-		temp_history[gains[i].index].successful_hits = temp_history[gains[i].index].total_shots;
-		min_matches++;
-	}
-	if (total_acc(temp_history, J) < X) {
-		min_matches = J + 1;
-	}
-	free(gains);
-	return min_matches > J ? J + 1 : min_matches;
-}
-
-int compare_asc(const void *a, const void *b)
-{
-	double score_a = ((matcheval *)a)->score;
-	double score_b = ((matcheval *)b)->score;
-	if (score_a > score_b)
-		return 1;
-	if (score_a < score_b)
-		return -1;
-	return 0;
-}
-
-int max_matches_0(matchstats *history, int J, double X)
-{
-	double current_acc = total_acc(history, J);
-	if (current_acc >= X)
-		return 0;
-	int total_K = 0;
-	for (int i = 0; i < J; i++) {
-		if (total_K == 0)
-			return J;
-	}
-
-	matchstats temp_history[J];
-	memcpy(temp_history, history, J * sizeof(matchstats));
-
-	matcheval *losses = (matcheval *)malloc(J * sizeof(matcheval));
-	if (!losses)
-		return -1;
-	for (int i = 0; i < J; i++) {
-		double acc_i = match_acc(temp_history[i].successful_hits, temp_history[i].total_shots);
-		losses[i].index = i;
-		losses[i].K = temp_history[i].total_ships;
-		losses[i].score = acc_i * losses[i].K;
-	}
-	qsort(losses, J, sizeof(matcheval), compare_asc);
-
-	int max_can_fail = 0;
-	for (int i = 0; i < J; i++) {
-		if (losses[i].K == 0) {
-			max_can_fail++;
-			continue;
-		}
-		if (match_acc(temp_history[losses[i].index].successful_hits, temp_history[losses[i].index].total_shots) == 0.0) {
-			max_can_fail++;
-			continue;
-		}
-
-		temp_history[losses[i].index].successful_hits = 0;
-		double acc_after_loss = total_acc(temp_history, J);
-
-		if (acc_after_loss >= X)
-			max_can_fail++;
-		else {
-			temp_history[losses[i].index].successful_hits = history[losses[i].index].successful_hits;
-			break;
-		}
-	}
-	free(losses);
-	return max_can_fail;
-}
-
-void run_stats(matchstats *p1_stats, matchstats *p2_stats, int J)
+void read_stats_input(void)
 {
 	char key[256];
 	char command[256];
-	if (scanf(" %s", key) != 1)
-		return;
-	
-	while (scanf(" %s", command) == 1) {
-		if (strcmp(command, "Q") == 0)
-			break;
-		if (strcmp(command, "-") != 0) {
-			//Hill chiper
+	int read_key = 0;
+	if (scanf(" %s", key) == 1) {
+		read_key = 1;
+	}
+	if (read_key) {
+		while (scanf(" %s", command) == 1) {
+			if (strcmp(command, "Q") == 0)
+				break;
 		}
-
-		char player_char = command[0];
-		char tip1_char = command[1];
-		char aaa_str[4] = {command[2], command[3], command[4], '\0'};
-		char bbb_str[7] = {command[5], command[6], command[7], command[8], command[9], command[10], '\0'};
-		char tip2_str[4] = {command[11], command[12], command[13], '\0'};
-
-		int player_idx = (player_char == 'O') ? 0 : 1;
-		int match_index = atoi(aaa_str);
-		double X = atof(bbb_str);
-		int min_max_type = strcmp(tip2_str, "MIN") == 0 ? 0 : 1;
-
-		matchstats *history = (player_idx == 0) ? p1_stats : p2_stats;
-
-		if (tip1_char == 'U' && (match_index < 1 || match_index > J)) {
-			printf("Nu exista date pentru meciul cerut.\n");
-			continue;
-		}
-
-		double acc_result = 0.0;
-		int stats_result = 0;
-
-		if (tip1_char == 'T') {
-			acc_result = total_acc(history, J);
-			if (min_max_type == 0)
-				stats_result = min_matches_100(history, J, X);
-			else
-				stats_result = max_matches_0(history, J, X);
-		} else {
-
-			matchstats current_match = history[match_index - 1];
-			acc_result = match_acc(current_match.successful_hits, current_match.total_shots);
-			if (min_max_type == 0)
-				stats_result = min_misses_hit(current_match, X);
-			else
-				stats_result = max_misses_to_hit(current_match, X);
-		}
-		char acc_part[16];
-		int int_part = (int)acc_result;
-
-		int frac_part = (int)((acc_result - int_part) * 100.0 + 0.5);
-
-		if (frac_part >= 100) {
-			int_part++;
-			frac_part -= 100;
-		}
-
-		snprintf(acc_part, sizeof(acc_part), "%03d.%02d.%d", int_part, frac_part, stats_result);
-
-		char output[256];
-		snprintf(output, sizeof(output), "%s %d", acc_part, stats_result);
-
-		if (strcmp(key, "-") != 0) {
-			//hill cipher
-		} else {
-			printf("%s\n", output);
-		}
-
 	}
 }
 
@@ -670,18 +399,6 @@ int main(void)
 	if (scanf("%lld", &j) != 1)
 		return 0;
 
-	int J = (int)j;
-
-	matchstats *p1_stats_history = (matchstats *)calloc(J, sizeof(matchstats));
-	matchstats *p2_stats_history = (matchstats *)calloc(J, sizeof(matchstats));
-
-	if (!p1_stats_history || !p2_stats_history) {
-		if (p1_stats_history)
-			free(p1_stats_history);
-		if (p2_stats_history)
-			free(p2_stats_history);
-			return 0;
-	}
 	for (int i = 0; i < j; i++) {
 		if (scanf("%d %d", &n, &m) != 2)
 			break;
@@ -691,11 +408,11 @@ int main(void)
 		char **board2 = allocate_board(n, m);
 
 		Player p1, p2;
-		int total1 = initialize_player(&p1, n, m, board1);
-		int total2 = initialize_player(&p2, n, m, board2);
+		int total = initialize_player(&p1, n, m, board1);
+		initialize_player(&p2, n, m, board2);
 
 		// Check for allocation errors
-		if (!board1 || !board2 || (total1 > 0 && !p1.ships) || (total2 > 0 && !p2.ships)) {
+		if (!board1 || !board2 || (total > 0 && (!p1.ships || !p2.ships))) {
 			deallocate_board(board1, n);
 			deallocate_board(board2, n);
 			deallocate_player_ships(&p1);
@@ -721,26 +438,14 @@ int main(void)
 			printf("Jucatorul 2 a castigat.\n");
 		}
 
-		// 5. Save statistics
-		p1_stats_history[i].total_ships = p1.valid_ships_count;
-		p1_stats_history[i].total_shots = p1.total_shots;
-		p1_stats_history[i].successful_hits = p1.successful_shots;
-		
-		p2_stats_history[i].total_ships = p2.valid_ships_count;
-		p2_stats_history[i].total_shots = p2.total_shots;
-		p2_stats_history[i].successful_hits = p2.successful_shots;
-		
-		// 6. Deallocate Memory
+		// 5. Deallocate Memory
 		deallocate_board(p1.board, n);
 		deallocate_board(p2.board, n);
 		deallocate_player_ships(&p1);
 		deallocate_player_ships(&p2);
 	}
 
-	run_stats(p1_stats_history, p2_stats_history, J);
-
-	free(p1_stats_history);
-	free(p2_stats_history);
+	read_stats_input();
 
 	return 0;
 
